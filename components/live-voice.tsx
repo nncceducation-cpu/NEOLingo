@@ -1,0 +1,34 @@
+"use client";
+import {useEffect,useRef,useState} from "react";
+import {LiveTurns} from "../lib/live-turns";
+import {VoiceProfile} from "../lib/voice-profile";
+type Props={voiceStyle:string;target:string;source:string;context:string;terms:string;microphone:string;bidirectional:boolean;back:boolean;gloss:boolean;onResult:(text:string)=>void;onSpeak:(text:string,voice?:string)=>Promise<void>;onActive:(value:boolean)=>void;onNotice:(text:string)=>void;speak:boolean};
+export default function LiveVoice(p:Props){
+const [active,A]=useState(false),[connecting,C]=useState(false),[phase,P]=useState("Ready for a conversation"),[ambience,AM]=useState(false),[signal,SIGNAL]=useState(""),[ending,ENDING]=useState(false);
+const peer=useRef<RTCPeerConnection|null>(null),media=useRef<MediaStream|null>(null),channel=useRef<RTCDataChannel|null>(null),version=useRef(0),timeout=useRef<any>(null),soundscape=useRef<AudioContext|null>(null),monitor=useRef<AudioContext|null>(null),meter=useRef<any>(null),turns=useRef<LiveTurns|null>(null),profile=useRef(new VoiceProfile());
+function stop(){turns.current?.dispose();turns.current=null;ENDING(false);clearInterval(meter.current);monitor.current?.close();monitor.current=null;SIGNAL("");version.current++;clearTimeout(timeout.current);if(channel.current?.readyState==="open")channel.current.close();channel.current=null;peer.current?.close();peer.current=null;media.current?.getTracks().forEach(t=>t.stop());media.current=null;A(false);C(false);p.onActive(false);P("Session ended");}
+useEffect(()=>()=>{turns.current?.dispose();clearInterval(meter.current);monitor.current?.close();version.current++;clearTimeout(timeout.current);channel.current?.close();peer.current?.close();media.current?.getTracks().forEach(t=>t.stop());soundscape.current?.close();},[]);
+useEffect(()=>{if(!ambience){soundscape.current?.close();soundscape.current=null;return;}const ctx=new AudioContext();soundscape.current=ctx;const gain=ctx.createGain();gain.gain.value=.006;gain.connect(ctx.destination);[174,261].forEach(f=>{const o=ctx.createOscillator();o.type="sine";o.frequency.value=f;o.connect(gain);o.start();});return()=>{ctx.close();};},[ambience]);
+function end(){if(connecting){stop();return;}if(ending)return;ENDING(true);media.current?.getTracks().forEach(t=>t.stop());clearInterval(meter.current);SIGNAL("");turns.current?.end();}
+async function start(){profile.current.reset();ENDING(false);const gen=++version.current;C(true);p.onNotice("");P("Connecting…");p.onResult("");try{
+const s=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});if(gen!==version.current){s.getTracks().forEach(t=>t.stop());return;}media.current=s;
+if(typeof AudioContext!=="undefined"){const ctx=new AudioContext();monitor.current=ctx;const analyser=ctx.createAnalyser();analyser.fftSize=2048;ctx.createMediaStreamSource(s).connect(analyser);const frame=new Float32Array(analyser.fftSize);let quiet=0;meter.current=setInterval(()=>{if(!s.getAudioTracks().some(t=>t.enabled)){SIGNAL("Microphone paused during spoken playback");return;}analyser.getFloatTimeDomainData(frame);profile.current.add(frame,ctx.sampleRate);let energy=0,clipped=0;for(const v of frame){energy+=v*v;if(Math.abs(v)>.98)clipped++;}const rms=Math.sqrt(energy/frame.length);quiet=rms<.003?quiet+1:0;SIGNAL(clipped>frame.length*.01?"Microphone is distorting — move slightly farther away":quiet>8?"Very quiet — move closer and speak clearly":"Microphone level detected");},250);}
+const pc=new RTCPeerConnection();peer.current=pc;s.getAudioTracks().forEach(t=>pc.addTrack(t,s));const dc=pc.createDataChannel("oai-events");channel.current=dc;let output="";
+const send=(o:any)=>{if(dc.readyState==="open")dc.send(JSON.stringify(o));};
+const flow=new LiveTurns({send,status:P,notice:p.onNotice,close:stop,play:async()=>{if(output&&p.speak){s.getAudioTracks().forEach(t=>t.enabled=false);P("Speaking translation…");await p.onSpeak(output,profile.current.voice(p.voiceStyle));if(gen===version.current&&!flow.ending)s.getAudioTracks().forEach(t=>t.enabled=true);}}});turns.current=flow;
+dc.onopen=()=>{if(gen!==version.current)return;A(true);C(false);p.onActive(true);P("Listening — speak naturally");timeout.current=setTimeout(()=>{ENDING(true);s.getTracks().forEach(t=>t.stop());flow.end();p.onNotice("Finishing this session after 10 minutes. Start again to continue.");},600000);};
+pc.onconnectionstatechange=()=>{if(gen!==version.current)return;if(pc.connectionState==="failed"||pc.connectionState==="disconnected"){stop();p.onNotice("Live connection interrupted. Start live voice again to reconnect.");}};
+dc.onmessage=async event=>{if(gen!==version.current)return;try{const e=JSON.parse(event.data);
+flow.event(e);
+if(e.type==="input_audio_buffer.speech_started"){profile.current.reset();P("Listening…");}
+if(e.type==="response.created"){output="";P("Translating…");p.onResult("");}
+if(e.type==="response.output_text.delta"){output+=e.delta||"";p.onResult(output);}
+if(e.type==="response.output_text.done"){output=e.text||output;p.onResult(output);}
+if(e.type==="response.done")await flow.complete(e.response?.status!=="failed"&&e.response?.status!=="cancelled");
+if(e.type==="error"&&e.error?.code!=="input_audio_buffer_commit_empty"){p.onNotice("Live translation is temporarily unavailable. Please reconnect and repeat the last phrase.");}
+
+}catch{}};
+const offer=await pc.createOffer();await pc.setLocalDescription(offer);const r=await fetch("/api/live",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sdp:offer.sdp,target:p.target,source:p.source,context:p.context,terms:p.terms,microphone:p.microphone,bidirectional:p.bidirectional,back:p.back,gloss:p.gloss})});if(!r.ok)throw Error((await r.json() as any).error);const answer=await r.text();if(gen!==version.current)return;await pc.setRemoteDescription({type:"answer",sdp:answer});
+}catch(e:any){if(gen===version.current){stop();p.onNotice(e.name==="NotAllowedError"?"Microphone access is needed for live voice. You can still type a translation.":e.message||"Live voice could not connect. Try recorded voice or text.");}}}
+return <div className={"voicepanel livevoice "+(active?"listening":"")}><div className="orb">{active?"◉":"◎"}</div><h2>{active?"A conversation, connected.":"Let your words travel."}</h2><p role="status">{phase}</p>{active&&signal&&<small className="miclevel">{signal}</small>}<button className="primary" disabled={!p.target.trim()||ending} onClick={active||connecting?end:start}>{ending?"Finishing translation…":connecting?"Cancel connection":active?"End & translate last phrase":"Start live voice"}</button><small>Automatic turns · use headphones · no source transcript</small><label className="ambience"><input type="checkbox" checked={ambience} onChange={e=>AM(e.target.checked)}/> Gentle soundscape</label></div>;
+}

@@ -1,0 +1,4 @@
+import fs from 'node:fs/promises';import {spawnSync} from 'node:child_process';
+await fs.mkdir('tests/.generated',{recursive:true});
+for(const file of ['route-tests.mjs','live-api-tests.mjs','dry-tests.mjs','end-session-tests.mjs','voice-match-tests.mjs','piper-runtime-tests.mjs']){const r=spawnSync(process.execPath,['--experimental-strip-types','tests/'+file],{stdio:'inherit',env:{...process.env,OPENAI_API_KEY:'synthetic-test-credential'}});if(r.status!==0)process.exit(r.status||1);}
+const names=['route-results','live-api-results','dry-results','end-session-results','voice-match-results','piper-runtime-results'];let total=0,failed=[];for(const name of names){const rows=JSON.parse(await fs.readFile('tests/.generated/'+name+'.json','utf8'));total+=rows.length;failed.push(...rows.filter(x=>!x.pass));}console.log(JSON.stringify({passed:total-failed.length,total,failures:failed},null,2));if(failed.length)process.exitCode=1;

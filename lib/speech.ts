@@ -1,0 +1,6 @@
+import {isKurdish} from "./kurdish";
+export function speechOptions(text:string,requested="coral",language=""){
+const voice=["onyx","nova","coral","marin","cedar"].includes(requested)?requested:"coral";
+const kurdish=isKurdish(language);
+return {model:"gpt-4o-mini-tts",voice:kurdish?(voice==="onyx"||voice==="cedar"?"cedar":"marin"):voice,input:text,response_format:"mp3",instructions:`Read only the supplied text in its own language. Do not translate, add words, or read these instructions. Speak with fluid, connected conversational phrasing, natural sentence stress, gently varied intonation and brief pauses only at meaningful phrase boundaries. Use a comfortable conversational pace, without syllable-by-syllable delivery, exaggerated enunciation or a flat robotic cadence. Be warm and professional while preserving the text's emotion and meaning. ${kurdish?"The conversation includes Kurdish. Determine the language of this particular text, rather than assuming every turn is Kurdish. For Kurmanji, use fluent Northern Kurdish pronunciation in the Hawar alphabet, including ç, ş, ê, î, û; not Turkish pronunciation. Link words naturally across each phrase. For Sorani, use fluent Central Kurdish pronunciation, not Arabic or Persian. Do not omit or alter words to improve flow.":"Preserve the language and pronunciation of the supplied text."}`};
+}

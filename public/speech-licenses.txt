@@ -1,0 +1,29 @@
+Kurmanji speech credits and source
+
+Selected voice: atenax/kurmanci-tts-piper, speaker 54
+Model revision: 054099b3aa363625feb30c456a8f98ab27b72dc7
+Model source, configuration and MIT license:
+https://huggingface.co/atenax/kurmanci-tts-piper/tree/054099b3aa363625feb30c456a8f98ab27b72dc7
+
+Clarity processing adapted from atenax/kurmanci-tts (MIT):
+https://huggingface.co/spaces/atenax/kurmanci-tts/tree/main
+The selected demo's 65 Hz high-pass, -4 dB at 6.5 kHz, and 9.5 kHz low-pass are retained.
+
+Browser runtime: piper-tts-web 1.1.2 (MIT), Copyright 2024 Jonas Plamann.
+Source including the phonemizer build instructions:
+https://github.com/Poket-Jony/piper-tts-web
+https://registry.npmjs.org/piper-tts-web/-/piper-tts-web-1.1.2.tgz
+
+ONNX Runtime Web (MIT):
+https://github.com/microsoft/onnxruntime/tree/v1.20.1
+
+Piper phonemization and eSpeak NG:
+https://github.com/rhasspy/piper-phonemize
+https://github.com/espeak-ng/espeak-ng
+The bundled eSpeak NG components are provided under GPLv3; source and build instructions are available from the projects above. License texts are included below.
+
+License files:
+/voice-licenses/model-MIT.txt
+/voice-licenses/piper-tts-web-MIT.txt
+/voice-licenses/onnxruntime-MIT.txt
+/voice-licenses/espeak-ng-GPLv3.txt

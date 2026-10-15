@@ -1,0 +1,16 @@
+import fs from 'node:fs/promises';import {build} from 'esbuild';import assert from 'node:assert/strict';
+await build({entryPoints:['lib/kurmanji-voice.ts'],bundle:true,format:'esm',platform:'node',outfile:'tests/.generated/test-kurmanji-runtime.mjs'});
+const results=[],messages=[],net=[];let held=false;
+const {isKurmanji,synthesizeKurmanji,cancelKurmanjiVoice}=await import('./.generated/test-kurmanji-runtime.mjs');
+globalThis.window={location:{origin:'https://neolingo.test'}};
+globalThis.fetch=async u=>{net.push(String(u));if(String(u).endsWith('.json'))return Response.json({audio:{sample_rate:22050},inference:{noise_scale:.52,length_scale:1.02,noise_w:.58}});return new Response(new Blob(['public-model-only']));};
+globalThis.Worker=class{constructor(url,o){this.url=url;this.o=o;}postMessage(m){messages.push({url:this.url,...m});if(m.type==='constructor')return;if(held&&m.type==='generate')return;queueMicrotask(()=>{if(!this.stopped)this.onmessage?.({data:m.type==='phonemize'?{phoneme_ids:[1,2]}:m.type==='generate'?{file:new Blob(['WAVE-test-output'],{type:'audio/wav'})}:null});});}terminate(){this.stopped=true;}};
+const test=async(name,fn)=>{try{await fn();results.push({name,pass:true});}catch(e){results.push({name,pass:false,error:e.message});}};
+await test('Kurmanji aliases route locally; Sorani and English do not',()=>{for(const l of ['Kurdish (Kurmanji)','Kurmancî','Northern Kurdish','kmr'])assert(isKurmanji(l));for(const l of ['English','Kurdish (Sorani)','Arabic'])assert(!isKurmanji(l));});
+await test('Chosen speaker 54 and original text reach local workers',async()=>{const blob=await synthesizeKurmanji('Roj baş!',()=>{});assert.equal(await blob.text(),'WAVE-test-output');assert.equal(messages.find(x=>x.type==='generate').data[2],54);assert.equal(messages.find(x=>x.type==='phonemize').data[0],'Roj baş!');assert(messages.filter(x=>x.type==='constructor').every(x=>x.url.startsWith('/kurmanji-runtime/')));});
+await test('Only immutable public model URLs use the network; no user text leaves',()=>{assert.equal(net.length,2);assert(net.every(u=>u.includes('054099b3aa363625feb30c456a8f98ab27b72dc7')));assert(!net.some(u=>u.includes('Roj')));});
+await test('Repeat playback reuses the loaded model',async()=>{await synthesizeKurmanji('Spas.',()=>{});assert.equal(net.length,2);});
+await test('Clear cancels a pending worker generation',async()=>{held=true;const p=synthesizeKurmanji('CANCEL THIS',()=>{});await new Promise(r=>setTimeout(r,5));cancelKurmanjiVoice();await assert.rejects(p);held=false;});
+await test('Playback works again after cancellation',async()=>{const b=await synthesizeKurmanji('Dîsa.',()=>{});assert.equal(b.type,'audio/wav');});
+await test('No transcript or generated audio storage is introduced',async()=>{const code=await fs.readFile('lib/kurmanji-voice.ts','utf8');assert(!/localStorage|indexedDB|console\./.test(code));});
+cancelKurmanjiVoice();await fs.writeFile('tests/.generated/piper-runtime-results.json',JSON.stringify(results,null,2));console.log(JSON.stringify({passed:results.filter(x=>x.pass).length,total:results.length,failures:results.filter(x=>!x.pass)}));if(results.some(x=>!x.pass))process.exitCode=1;
