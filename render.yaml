@@ -1,0 +1,14 @@
+# GitHub-backed deployment. Enter credentials only in Render's secret prompt.
+services:
+  - type: web
+    name: neolingo
+    runtime: docker
+    plan: free
+    repo: https://github.com/nncceducation-cpu/NEOLingo
+    branch: main
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
